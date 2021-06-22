@@ -1,0 +1,127 @@
+---
+title: "DE analysis"
+author: "Mathias Cardner"
+date: "30/11/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(DESeq2)
+library(cowplot)
+library(dplyr)
+library(apeglm)
+library(grid)
+library(gtable)
+loadfonts(device = "win")
+```
+
+## Input data Bac7_EP
+```{r}
+
+#countData <- as.data.frame(read.csv('../Lists/counts_min10t0.csv'))
+
+#####new file
+#chose to load the 5 min or 10 min file
+countData <- as.data.frame(read.csv('../Files/readCounts_epPCR_min5NGSReadsPerDNASequence.csv'))
+#countData <- as.data.frame(read.csv('../Files/readCounts_epPCR_sum10NGSReadsPerDNASequence.csv'))
+
+countData_sub <- countData %>% select(ID,t0_A,t0_B,t0_C,t4_A,t4_B,t4_C)
+
+countData_sub <- 
+  countData_sub %>%
+  dplyr::rename(
+    t0A = t0_A,
+    t0B = t0_B,
+    t0C = t0_C,
+    t4A = t4_A,
+    t4B = t4_B,
+    t4C = t4_C
+    ) %>%
+  as.data.frame() %>%
+  column_to_rownames("ID")
+
+
+timepoint <- parse_number(colnames(countData_sub)) %>% factor() %>% relevel("0")
+batch <- sub(".*\\d", "", colnames(countData_sub))
+colData <- data.frame(row.names = colnames(countData_sub),
+                      timepoint = timepoint,
+                      batch = factor(batch))
+
+dds <- DESeqDataSetFromMatrix(countData_sub, colData, ~ batch + timepoint)
+dds <- dds[rowSums(counts(dds)) > 1,]
+```
+
+Generate new dds file using normalized counts * the size factor (OD)
+```{r}
+
+dds.Wald <- DESeq(dds, parallel = TRUE)
+res.Wald <- results(dds.Wald, name = "timepoint_4_vs_0", altHypothesis = "less",
+                    alpha = 0.05, parallel = TRUE)
+
+
+lfcShrink <- lfcShrink(dds.Wald, coef = "timepoint_4_vs_0", type = "apeglm",parallel = TRUE)
+res.Wald$lfcShrink4 <- lfcShrink$log2FoldChange
+```
+
+Create table of OD values of the measured shake flask experiment
+```{r}
+log2meanODratios <- tibble(t0A = 0.25,
+                           t0B = 0.26,
+                           t0C = 0.24,
+                           t4A = 2.3,
+                           t4B = 2.28,
+                           t4C = 2.35) %>%
+  gather(condition, OD) %>%
+  # Group ODs by time point, and compute the mean.
+  mutate(timepoint = parse_number(condition)) %>%
+  group_by(timepoint) %>%
+  summarise(meanOD = mean(OD)) %>%
+  ungroup() 
+```
+
+Compute the "number" of cells, relative to $t_0$, according to:
+\[\operatorname{Cells}(t)=2^{\operatorname{lfcShrink(t)+\log_2(\bar{OD}(t)/\bar{OD}(t_0))}}\]
+```{r}
+ODmex <- function(x) {
+  OD <- log2meanODratios %>%
+    filter(timepoint == x) %>%
+    pull(meanOD)
+  return(2^res.Wald[[paste0("lfcShrink", x)]]*OD)
+}
+
+ODmex_0 = 0.25
+
+res.Wald$Cells_t0 <- ODmex_0
+res.Wald$Cells_t4 <- ODmex(4)
+
+results = as.data.frame(res.Wald) %>%
+  rownames_to_column("ID") %>%
+  left_join(countData %>% 
+              mutate(ID = as.character(ID)), by='ID') %>%
+  dplyr::rename(DNAsPerPeptideA.t0 = DNAsPerPeptideA.x,
+                DNAsPerPeptideA.t4 = DNAsPerPeptideA.y,
+                DNAsPerPeptideB.t0 = DNAsPerPeptideB.x,
+                DNAsPerPeptideB.t4 = DNAsPerPeptideB.y,
+                DNAsPerPeptideC.t0 = DNAsPerPeptideC.x,
+                DNAsPerPeptideC.t4 = DNAsPerPeptideC.y,
+                AvrgNGSReadsPerPeptideA.t0 = AvrgNGSReadsPerPeptideA.x,
+                AvrgNGSReadsPerPeptideA.t4 = AvrgNGSReadsPerPeptideA.y,
+                AvrgNGSReadsPerPeptideB.t0 = AvrgNGSReadsPerPeptideB.x,
+                AvrgNGSReadsPerPeptideB.t4 = AvrgNGSReadsPerPeptideB.y,
+                AvrgNGSReadsPerPeptideC.t0 = AvrgNGSReadsPerPeptideC.x,
+                AvrgNGSReadsPerPeptideC.t4 = AvrgNGSReadsPerPeptideC.y,) %>%
+  select(-X)
+                
+                
+saveRDS(results,file='../Files/ultrafile_epPCR_newcounts_5DNAmin.rds')
+
+```
+
+
+
