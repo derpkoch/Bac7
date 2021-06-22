@@ -1,0 +1,157 @@
+---
+title: "DEAnalysis_Bac7_4pos"
+author: "Philipp Koch"
+date: "8/20/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(DESeq2)
+```
+
+
+
+## Input data Bac7_4pos
+```{r}
+
+########
+countData_4pos <- as.data.frame(read.csv("N:/panke/07_Alumni/Students/39_aheynisc/post-NGS computational analysis/Novaseq analyses/read_translations_final/4_pos/count_table_PK.csv")) %>%
+  select(-X,-Sequence) %>%
+  column_to_rownames("ID") %>%
+  as.matrix()
+
+
+timepoint <- parse_number(colnames(countData_4pos)) %>% factor() %>% relevel("0")
+batch <- sub(".*\\d", "", colnames(countData_4pos))
+colData <- data.frame(row.names = colnames(countData_4pos),
+                      timepoint = timepoint,
+                      batch = factor(batch))
+
+dds <- DESeqDataSetFromMatrix(countData_4pos, colData, ~ batch + timepoint)
+dds <- dds[rowSums(counts(dds)) > 1,]
+
+
+dds.Wald <- DESeq(dds, parallel = TRUE)
+
+res.wald = NULL
+res.Wald <- results(dds.Wald, name = "timepoint_5_vs_0", altHypothesis = "less",
+                    alpha = 0.05, parallel = TRUE)
+
+res.Wald$padj.t4 <- results(dds.Wald, name = "timepoint_4_vs_0", altHypothesis = "less",
+                    alpha = 0.05, parallel = TRUE)$padj 
+
+res.Wald$padj.t2  <- results(dds.Wald, name = "timepoint_2_vs_0", altHypothesis = "less",
+                    alpha = 0.05, parallel = TRUE)$padj
+
+
+lfcShrink5 <- lfcShrink(dds.Wald, coef = "timepoint_5_vs_0", type = "apeglm",parallel = TRUE)
+lfcShrink4 <- lfcShrink(dds.Wald, coef = "timepoint_4_vs_0", type = "apeglm",parallel = TRUE)
+lfcShrink2 <- lfcShrink(dds.Wald, coef = "timepoint_2_vs_0", type = "apeglm",parallel = TRUE)
+
+res.Wald$lfcShrink5 <- lfcShrink5$log2FoldChange
+res.Wald$lfcShrink4 <- lfcShrink4$log2FoldChange
+res.Wald$lfcShrink2 <- lfcShrink2$log2FoldChange
+
+```
+
+Create table of OD values of the measured shake flask experiment
+```{r}
+log2meanODratios <- tibble(t0A = 0.25,
+                           t0B = 0.26,
+                           t0C = 0.24,
+                           t2A = 0.55,
+                           t2B = 0.6,
+                           t2C = 0.62,
+                           t4A = 1.2,
+                           t4B = 1.23,
+                           t4C = 1.21,
+                           t5A = 1.95,
+                           t5B = 1.92,
+                           t5C = 1.9) %>%
+  gather(condition, OD) %>%
+  # Group ODs by time point, and compute the mean.
+  mutate(timepoint = parse_number(condition)) %>%
+  group_by(timepoint) %>%
+  summarise(meanOD = mean(OD)) %>%
+  ungroup() 
+```
+
+Compute the "number" of cells, relative to $t_0$, according to:
+\[\operatorname{Cells}(t)=2^{\operatorname{lfcShrink(t)+\log_2(\bar{OD}(t)/\bar{OD}(t_0))}}\]
+```{r}
+ODmex <- function(x) {
+  OD <- log2meanODratios %>%
+    filter(timepoint == x) %>%
+    pull(meanOD)
+  return(2^res.Wald[[paste0("lfcShrink", x)]]*OD)
+}
+
+ODmex_0 = 0.25
+
+res.Wald$Cells_t0 <- ODmex_0
+res.Wald$Cells_t2 <- ODmex(2)
+res.Wald$Cells_t4 <- ODmex(4)
+res.Wald$Cells_t5 <- ODmex(5)
+
+
+```
+
+
+```{r}
+id_seq <- as.data.frame(read.csv("N:/panke/07_Alumni/Students/39_aheynisc/post-NGS computational analysis/Novaseq analyses/read_translations_final/4_pos/count_table_PK.csv")) %>%
+  select(ID,Sequence) %>%
+  mutate(ID = as.character(ID))
+
+ultrafile = res.Wald %>%
+  as.data.frame() %>%
+  rownames_to_column("ID") %>%
+  as_tibble() %>%
+  left_join(id_seq %>%
+              mutate(ID = as.character(ID)))
+
+
+results_4pos_final = left_join(results_4pos, id_seq, by='ID') %>%
+  dplyr::rename(pvalue.t5 = pvalue, padj.t5 = padj)%>%
+  select(ID,Sequence,pvalue.t2,padj.t2, pvalue.t4, padj.t4, pvalue.t5,padj.t5,lfcShrink2,lfcShrink4, lfcShrink5, everything())
+
+
+
+saveRDS(ultrafile, file = '../files/Bac7_4pos_ultrafile3.rds')
+```
+
+plotting curves
+```{r}
+
+ultrafile_4pos = readRDS('Bac7 paper/files/Bac7_4pos_ultrafile2.rds') 
+
+ultrafile_4pos_sample = ultrafile_4pos %>%
+  filter(Cells_t5<30 & Cells_t4 <30 ) %>%
+  sample_n(20000)
+
+data= ultrafile_4pos_sample %>%
+  select(ID, Cells_t0, Cells_t2, Cells_t4, Cells_t5) %>%
+  arrange(Cells_t5) %>%
+  mutate(Rank = 1:nrow(.)) %>%
+  gather(Timepoint, Cells, -ID, -Rank) %>%
+  mutate(Time=rep(c(0,2,4,5),each=nrow(ultrafile_4pos_sample)))
+
+ggplot() +  
+  theme_bw()+
+  geom_line(data = data , aes(Time, Cells, group = ID), alpha = 0.3)+
+  #geom_line(data = data %>% filter(Active == 'Yes'), aes(Time, Cells, group = ID, colour = Active))+
+  #geom_point(aes(y=Cells, shape = pvalue<0.05))+
+  #scale_linetype_manual(values=c("solid", "longdash"))+
+  #ylim(0,40)+
+  ylab('Norm. cell count [#t0/#tn]')+
+  ylab(expression(Norm.~cell~count~'[#'~t[n]~'/#'~t[0]~']'))+
+  #ggtitle('Mex generated growth curves')+
+  xlab('Time[h]')+
+  theme(legend.position = "none")+
+  theme(text = element_text(size = 24, face = "plain"))
+  #scale_color_viridis(discrete = F, option = 'D', direction=1)
+  #scale_color_manual(values=c('#3B1C8C','#21908D'))
+```
+
