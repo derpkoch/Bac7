@@ -1,0 +1,133 @@
+---
+title: "NGS data analysis of the Bac71-23 libraries"
+author: "Philipp Koch"
+date: "06.06.2021"
+output:
+  word_document: default
+  pdf_document: default
+subtitle: DESeq2, shrunken log fold changes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, eval = FALSE)
+```
+
+## Load packages and data
+
+```{r}
+library(tidyverse)
+library(DESeq2)
+```
+
+Load Supplementary Table 1 & 2, containing NGS read counts for each peptide-encoding DNA
+```{r}
+#for the random library
+countData_random <- read.csv("../Supplementary Tables/Supplementary Table 1_NGS_random.csv") %>%
+  column_to_rownames("ID") %>%
+  select(-Sequence) %>%
+  as.matrix()
+
+#for the site saturation library
+countData_sitesat <- read.csv("../Supplementary Tables/Supplementary Table 3_NGS_sitesat.csv") %>%
+  column_to_rownames("ID") %>%
+  select(-Sequence) %>%
+  as.matrix()
+```
+
+## Pre-process
+
+DESeq2 uses the first level of `timepoint` as the baseline for tests. Since we want to compare against $t_0$, we relevel this to be the first level of `timepoint` (also necessary for using `lfcShrink` later). We leave $t_4$ as the last level, since this is the condition of interest.
+
+```{r}
+#for the random library
+timepoint_random <- parse_number(colnames(countData_random)) %>% factor() %>% relevel("0")
+batch_random <- sub(".*\\d", "", colnames(countData_random))
+colData_random <- data.frame(row.names = colnames(countData_random),
+                      timepoint = timepoint_random,
+                      batch = factor(batch_random))
+
+#for the site saturation library
+timepoint_sitesat <- parse_number(colnames(countData_sitesat)) %>% factor() %>% relevel("0")
+batch_sitesat <- sub(".*\\d", "", colnames(countData_sitesat))
+colData_sitesat <- data.frame(row.names = colnames(countData_sitesat),
+                      timepoint = timepoint_sitesat,
+                      batch = factor(batch_sitesat))
+```
+
+## Differential abundance analysis
+
+DESeq2 uses the last term of the design formula for contrasts, which in our case should be `timepoint`.
+
+```{r}
+#for the random library
+dds_random <- DESeqDataSetFromMatrix(countData_random, colData_random, ~ batch + timepoint)
+dds_random <- dds_random[rowSums(counts(dds_random)) > 1,]
+
+#for the site saturation library
+dds_sitesat <- DESeqDataSetFromMatrix(countData_sitesat, colData_sitesat, ~ batch + timepoint)
+dds_sitesat <- dds_sitesat[rowSums(counts(dds_sitesat)) > 1,]
+```
+
+
+Fit DESeq model. Data from all time points and replicates are used to estimate dispersion, but only the contrast $t_3$, corresponding to 4.5 h past induction, vs $t_0$, the time point for induction will be computed and tested in the end. Use `apeglm` to compute shrunken log2FoldChanges at time point 4 vs 0.
+
+```{r}
+#for the random library
+dds.Wald_random <- DESeq(dds_random, parallel = TRUE)
+res.Wald_random  <- results(dds.Wald_random , name = "timepoint_4_vs_0", altHypothesis = "less",
+                    alpha = 0.05, parallel = TRUE)
+lfcShrink_random  <- lfcShrink(dds.Wald_random , coef = "timepoint_4_vs_0", type = "apeglm",parallel = TRUE)
+res.Wald_random$lfcShrink4 <- lfcShrink_random$log2FoldChange
+
+
+#for the site saturation library
+dds.Wald_sitesat <- DESeq(dds_sitesat, parallel = TRUE)
+res.Wald_sitesat  <- results(dds.Wald_sitesat , name = "timepoint_4_vs_0", altHypothesis = "less",
+                    alpha = 0.05, parallel = TRUE)
+lfcShrink_sitesat  <- lfcShrink(dds.Wald_sitesat , coef = "timepoint_4_vs_0", type = "apeglm",parallel = TRUE)
+res.Wald_sitesat$lfcShrink4 <- lfcShrink_sitesat$log2FoldChange
+```
+
+<!-- Plot a PCA of the data normalised using the regularised logarithmic transform `rlog()`. -->
+
+```{r eval=FALSE, include=FALSE}
+#for the random library
+rld_random <- rlog(dds_random)
+plotPCA(rld_random, intgroup = "timepoint") +
+  theme_bw() +
+  labs(title = "Principal component analysis of epPCR NGS count data",
+       subtitle = "Counts normalised using the regularised log transform")
+
+#for the site saturation library
+rld_sitesat <- rlog(dds_sitesat)
+plotPCA(rld_random, intgroup = "timepoint") +
+  theme_bw() +
+  labs(title = "Principal component analysis of site saturation NGS count data",
+       subtitle = "Counts normalised using the regularised log transform")
+```
+
+## Save data
+
+Rank list of peptides according to the shrunken log2FoldChange and save table as Supplementary Table 2 & 4
+```{r}
+#for the random library
+results_random = as.data.frame(res.Wald_random) %>%
+  rownames_to_column("ID") %>%
+  left_join(read.csv("../Supplementary Tables/Supplementary Table 1_NGS_random.csv") %>% select(ID,Sequence) %>% mutate(ID = as.character(ID)),   by='ID') %>%
+  select(ID,Sequence,lfcShrink4) %>%
+  arrange(lfcShrink4)%>%
+  mutate(Rank = c(1:nrow(.)))
+
+#for the site saturation library
+results_sitesat = as.data.frame(res.Wald_sitesat) %>%
+  rownames_to_column("ID") %>%
+  left_join(read.csv("../Supplementary Tables/Supplementary Table 3_NGS_sitesat.csv") %>% select(ID,Sequence) %>% mutate(ID = as.character(ID)),   by='ID') %>%
+  select(ID,Sequence,lfcShrink4) %>%
+  arrange(lfcShrink4)%>%
+  mutate(Rank = c(1:nrow(.)))
+                
+                
+#saveRDS(results_random,file='../Supplementary Tables/Supplementary Table 2.rds')
+#saveRDS(results_sitesat,file='../Supplementary Tables/Supplementary Table 4.rds')
+
+```
