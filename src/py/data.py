@@ -18,7 +18,7 @@ def load(file, positions=range(23)):
         pd.DataFrame: data with one column per position.
     """
 
-    df = pd.read_csv(file, index_col=0)
+    df = pd.read_csv(file, index_col=1)
 
     # create one column per position.
     for p in positions:
@@ -29,7 +29,10 @@ def load(file, positions=range(23)):
         df[pos] = df['Sequence'].apply(lambda x: x[p])
 
     df = df.drop('Sequence', axis=1)
-    df = df.drop('shrunken.log2.fold.change', axis=1)
+    if 'lfcShrink4' in df.columns:
+        df = df.drop('lfcShrink4', axis=1)
+    if 'shrunken.log2.fold.change' in df.columns:
+        df = df.drop('shrunken.log2.fold.change', axis=1)
     df = df.drop('ID', axis=1)
 
     return df
