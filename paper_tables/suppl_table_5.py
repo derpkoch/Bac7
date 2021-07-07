@@ -75,8 +75,6 @@ def main():
 
             print(f'at {acid1}, Position {position1}', end='\r')
 
-            score1 = original_scores[position1][acid1]
-
             # Fix the specified acid in the specified position and
             # re-calculate all the scores of the filtered data set
             # to learn about correlation effects.
@@ -91,22 +89,24 @@ def main():
 
             for position2 in sorted(filtered_scores):
                 for acid2 in sorted(filtered_scores[position2]):
-                    score2 = filtered_scores[position2][acid2]
 
+                    score2 = filtered_scores[position2][acid2]
                     delta = score2 - original_scores[position2][acid2]
 
                     interactions.append({
-                        'acid1': acid1,
-                        'pos1': position1,
-                        'score1': score1,
-                        'acid2': acid2,
-                        'pos2': position2,
-                        'score2': score2,
-                        'delta': delta,
+                        'AA1': acid2,
+                        'Position 1': position2,
+                        'AUC_AA1': original_scores[position2][acid2],
+                        'AA2': acid1,
+                        'Position 2': position1,
+                        'AUC_AA1 | AA2': score2,
+                        'Delta AUC': delta,
                     })
 
     df_out = pd.DataFrame(interactions)
-    df_out.to_csv(file_out)
+    df_out = df_out.sort_values('Delta AUC', ascending=False)
+    df_out = df_out.set_index('AA1')
+    df_out.to_csv(file_out, float_format='%.9f')
 
 
 if __name__ == '__main__':
