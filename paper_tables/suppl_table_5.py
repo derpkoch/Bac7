@@ -48,10 +48,10 @@ def main():
 
     mode = 'auc'
 
-    path = '/Users/anjagumpinger/Downloads'
+    path = '~/Downloads'
     filename = 'Supplementary Table 4_Ranking_sitesat.csv'
 
-    file_out = f'test.csv'
+    file_out = f'suppl_table_5.csv'
 
     # load data.
     df = data.load(f'{path}/{filename}', positions=[4, 17, 18, 19])
