@@ -154,9 +154,20 @@ def enrichment_score(curve):
 
     Returns:
         float: enrichment score.
-
     """
     return curve[np.abs(curve).argmax()]
+
+
+def enrichment_auc(curve):
+    """Computes the AUC under the enrichment.
+
+    Args:
+        curve (np.array): enrichment curve.
+
+    Returns:
+        float: enrichment score.
+    """
+    return np.mean(curve)
 
 
 def zscore(x, mu, std):
