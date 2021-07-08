@@ -7,6 +7,6 @@ The folder _paper_ contains scripts to reproduce results used in main Figures 1 
 To run those scripts, the original data sets are required, which will be published after acceptance of the manuscript.
 
 ### Contact
-For questions regarding R code, please contact philipp.koch@bsse.ethz.ch
+For questions regarding R code, please contact derpkoch@gmail.com
 
 For questions regarding python code, please contact anja.gumpinger@gmail.com
