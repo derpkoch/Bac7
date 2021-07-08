@@ -3,6 +3,7 @@
 # Modifications: Anja Gumpinger
 
 import collections
+import os
 import sys
 
 import pandas as pd
@@ -46,15 +47,16 @@ def get_all_scores(df, mode='max'):
 
 def main():
 
-    mode = 'auc'
-
-    path = '~/Downloads'
+    # input/output paths, input filename.
+    inpath = '~/Downloads'
+    outpath = './suppl_table_5'
     filename = 'Supplementary Table 4_Ranking_sitesat.csv'
 
-    file_out = f'suppl_table_5.csv'
+    # Whether to compute the AUC of the enrichment curve, or the maximum.
+    mode = 'auc'
 
     # load data.
-    df = data.load(f'{path}/{filename}', positions=[4, 17, 18, 19])
+    df = data.load(f'{inpath}/{filename}', positions=[4, 17, 18, 19])
 
     # Get original scores for all position/amino acid combinations.
     original_scores = get_all_scores(df, mode=mode)
@@ -106,7 +108,10 @@ def main():
     df_out = pd.DataFrame(interactions)
     df_out = df_out.sort_values('Delta AUC', ascending=False)
     df_out = df_out.set_index('AA1')
-    df_out.to_csv(file_out, float_format='%.9f')
+
+    # write output.
+    os.makedirs(outpath, exist_ok=True)
+    df_out.to_csv(f'{outpath}/conditional_auc.csv', float_format='%.9f')
 
 
 if __name__ == '__main__':
