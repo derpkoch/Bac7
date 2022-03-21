@@ -3,7 +3,7 @@
 This repository contains code to reproduce results from the manuscript __Deep mutational scanning for optimization of the
 antimicrobial peptide Bac7__ by Philipp Koch et al (submitted).
 
-The folder _paper_ contains scripts to reproduce results used in main Figures 1 and 2, as well as Additiona File 6. 
+The folder _paper_ contains scripts to reproduce results used in main Figures 1 and 2, as well as Additional File 6. 
 To run those scripts, the original data sets are required, which will be published after acceptance of the manuscript.
 
 ### Contact
